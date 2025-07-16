@@ -20,14 +20,14 @@ https://user-images.githubusercontent.com/17098415/179404306-01f9a32f-7347-4523-
 
 Please add the following URL to `Package Manager -> [Add package from git URL...]`.
 
-> `https://github.com/myrisee/URP17-Glitch?path=Assets/URPGlitch`
+> `https://github.com/myrisee/URP17-Glitch.git?path=Assets/URPGlitch`
 
 or add the following URL to `Package/manifest.json -> dependencies`.
 
 ```json
 {
   "dependencies": {
-    "com.mao-test-h.urp-glitch": "https://github.com/myrisee/URP17-Glitch?path=Assets/URPGlitch",
+    "com.mao-test-h.urp-glitch": "https://github.com/myrisee/URP17-Glitch.git?path=Assets/URPGlitch",
   }
 }
 ```
