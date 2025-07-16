@@ -1,8 +1,8 @@
 {
   "name": "com.myrisee.urp-glitch",
-  "description": "Glitch effect with URP17 compatible with Unity6",
+  "description": "Glitch effect with URP17 compatible Unity6",
   "version": "1.0.0",
-  "unity": "6000.0.0",
+  "unity": "6000.0",
   "displayName": "URP17-Glitch",
   "dependencies": {
     "com.unity.render-pipelines.universal": "17.0.0"
