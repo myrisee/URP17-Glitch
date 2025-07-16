@@ -1,82 +1,52 @@
 // refered to:
 //     https://github.com/keijiro/KinoGlitch.git
-//     Assets/Kino/Glitch/DigitalGlitch.cs
+//     Assets/Kino/Glitch/AnalogGlitch.cs
 
 using System;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
-namespace URPGlitch.Runtime.DigitalGlitch
+namespace URPGlitch.Runtime.AnalogGlitch
 {
-    sealed class DigitalGlitchRenderPass : ScriptableRenderPass, IDisposable
+    sealed class AnalogGlitchRenderPass : ScriptableRenderPass, IDisposable
     {
-        const string RenderPassName = "DigitalGlitch RenderPass";
+        const string RenderPassName = "AnalogGlitch RenderPass";
 
         // Material Properties
         static readonly int MainTexID = Shader.PropertyToID("_MainTex");
-        static readonly int NoiseTexID = Shader.PropertyToID("_NoiseTex");
-        static readonly int TrashTexID = Shader.PropertyToID("_TrashTex");
-        static readonly int IntensityID = Shader.PropertyToID("_Intensity");
+        static readonly int ScanLineJitterID = Shader.PropertyToID("_ScanLineJitter");
+        static readonly int VerticalJumpID = Shader.PropertyToID("_VerticalJump");
+        static readonly int HorizontalShakeID = Shader.PropertyToID("_HorizontalShake");
+        static readonly int ColorDriftID = Shader.PropertyToID("_ColorDrift");
 
         readonly ProfilingSampler _profilingSampler;
-        readonly System.Random _random;
-
         readonly Material _glitchMaterial;
-        readonly Texture2D _noiseTexture;
-        readonly DigitalGlitchVolume _volume;
+        readonly AnalogGlitchVolume _volume;
 
-        RenderTargetHandle _mainFrame;
-        RenderTargetHandle _trashFrame1;
-        RenderTargetHandle _trashFrame2;
+        RTHandle _mainFrame;
+        float _verticalJumpTime;
 
         bool isActive =>
             _glitchMaterial != null &&
             _volume != null &&
             _volume.IsActive;
 
-        public DigitalGlitchRenderPass(Shader shader)
+        public AnalogGlitchRenderPass(Shader shader)
         {
             renderPassEvent = RenderPassEvent.AfterRenderingPostProcessing;
             _profilingSampler = new ProfilingSampler(RenderPassName);
-            _random = new System.Random();
             _glitchMaterial = CoreUtils.CreateEngineMaterial(shader);
 
-            _noiseTexture = new Texture2D(64, 32, TextureFormat.ARGB32, false)
-            {
-                hideFlags = HideFlags.DontSave,
-                wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Point
-            };
-
             var volumeStack = VolumeManager.instance.stack;
-            _volume = volumeStack.GetComponent<DigitalGlitchVolume>();
+            _volume = volumeStack.GetComponent<AnalogGlitchVolume>();
 
-            _mainFrame.Init("_MainFrame");
-            _trashFrame1.Init("_TrashFrame1");
-            _trashFrame2.Init("_TrashFrame2");
-            UpdateNoiseTexture();
+            _mainFrame = RTHandles.Alloc("_MainFrame", name: "_MainFrame");
         }
 
         public void Dispose()
         {
             CoreUtils.Destroy(_glitchMaterial);
-            CoreUtils.Destroy(_noiseTexture);
-        }
-
-        // This method is called by the renderer before executing the render pass.
-        // Override this method if you need to to configure render targets and their clear state, and to create temporary render target textures.
-        // If a render pass doesn't override this method, this render pass renders to the active Camera's render target.
-        // You should never call CommandBuffer.SetRenderTarget. Instead call <c>ConfigureTarget</c> and <c>ConfigureClear</c>.
-        public override void Configure(CommandBuffer cmd, RenderTextureDescriptor cameraTextureDescriptor)
-        {
-            if (!isActive) return;
-
-            var r = (float)_random.NextDouble();
-            if (r > Mathf.Lerp(0.9f, 0.5f, _volume.intensity.value))
-            {
-                UpdateNoiseTexture();
-            }
         }
 
         // Here you can implement the rendering logic.
@@ -97,68 +67,40 @@ namespace URPGlitch.Runtime.DigitalGlitch
             cmd.Clear();
             using (new ProfilingScope(cmd, _profilingSampler))
             {
-                var source = renderingData.cameraData.renderer.cameraColorTarget;
+                var source = renderingData.cameraData.renderer.cameraColorTargetHandle;
 
                 var cameraTargetDescriptor = renderingData.cameraData.cameraTargetDescriptor;
                 cameraTargetDescriptor.depthBufferBits = 0;
-                cmd.GetTemporaryRT(_mainFrame.id, cameraTargetDescriptor);
-                cmd.GetTemporaryRT(_trashFrame1.id, cameraTargetDescriptor);
-                cmd.GetTemporaryRT(_trashFrame2.id, cameraTargetDescriptor);
-                cmd.Blit(source, _mainFrame.Identifier());
+                cmd.GetTemporaryRT(Shader.PropertyToID(_mainFrame.name), cameraTargetDescriptor);
+                var destination = _mainFrame.nameID;
+                CoreUtils.SetRenderTarget(cmd, destination);
+                cmd.Blit(source, destination);
 
-                var frameCount = Time.frameCount;
-                if (frameCount % 13 == 0) cmd.Blit(source, _trashFrame1.Identifier());
-                if (frameCount % 73 == 0) cmd.Blit(source, _trashFrame2.Identifier());
+                var scanLineJitter = _volume.scanLineJitter.value;
+                var verticalJump = _volume.verticalJump.value;
+                var horizontalShake = _volume.horizontalShake.value;
+                var colorDrift = _volume.colorDrift.value;
 
-                var r = (float)_random.NextDouble();
-                var blitTrashHandle = r > 0.5f ? _trashFrame1 : _trashFrame2;
-                cmd.SetGlobalFloat(IntensityID, _volume.intensity.value);
-                cmd.SetGlobalTexture(NoiseTexID, _noiseTexture);
-                cmd.SetGlobalTexture(MainTexID, _mainFrame.Identifier());
-                cmd.SetGlobalTexture(TrashTexID, blitTrashHandle.Identifier());
+                _verticalJumpTime += Time.deltaTime * verticalJump * 11.3f;
 
-                cmd.Blit(_mainFrame.Identifier(), source, _glitchMaterial);
+                var slThresh = Mathf.Clamp01(1.0f - scanLineJitter * 1.2f);
+                var slDisp = 0.002f + Mathf.Pow(scanLineJitter, 3) * 0.05f;
+                _glitchMaterial.SetVector(ScanLineJitterID, new Vector2(slDisp, slThresh));
 
-                cmd.ReleaseTemporaryRT(_mainFrame.id);
-                cmd.ReleaseTemporaryRT(_trashFrame1.id);
-                cmd.ReleaseTemporaryRT(_trashFrame2.id);
+                var vj = new Vector2(verticalJump, _verticalJumpTime);
+                _glitchMaterial.SetVector(VerticalJumpID, vj);
+                _glitchMaterial.SetFloat(HorizontalShakeID, horizontalShake * 0.2f);
+
+                var cd = new Vector2(colorDrift * 0.04f, Time.time * 606.11f);
+                _glitchMaterial.SetVector(ColorDriftID, cd);
+
+                cmd.SetGlobalTexture(MainTexID, _mainFrame.nameID);
+                cmd.Blit(destination, source, _glitchMaterial);
+                cmd.ReleaseTemporaryRT(Shader.PropertyToID(_mainFrame.name));
             }
 
             context.ExecuteCommandBuffer(cmd);
             CommandBufferPool.Release(cmd);
-        }
-
-        void UpdateNoiseTexture()
-        {
-            var color = randomColor;
-
-            for (var y = 0; y < _noiseTexture.height; y++)
-            {
-                for (var x = 0; x < _noiseTexture.width; x++)
-                {
-                    var r = (float)_random.NextDouble();
-                    if (r > 0.89f)
-                    {
-                        color = randomColor;
-                    }
-
-                    _noiseTexture.SetPixel(x, y, color);
-                }
-            }
-
-            _noiseTexture.Apply();
-        }
-
-        Color randomColor
-        {
-            get
-            {
-                var r = (float)_random.NextDouble();
-                var g = (float)_random.NextDouble();
-                var b = (float)_random.NextDouble();
-                var a = (float)_random.NextDouble();
-                return new Color(r, g, b, a);
-            }
         }
     }
 }
