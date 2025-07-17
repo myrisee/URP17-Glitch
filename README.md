@@ -12,8 +12,8 @@ https://user-images.githubusercontent.com/17098415/179404306-01f9a32f-7347-4523-
 
 ## Supported Unity versions
 
-- Unity 2021.3+
-    - URP 12.1.7
+- Unity 6000.0+
+    - URP 17.0.0
 
 
 ## Installing
@@ -27,7 +27,7 @@ or add the following URL to `Package/manifest.json -> dependencies`.
 ```json
 {
   "dependencies": {
-    "com.mao-test-h.urp-glitch": "https://github.com/myrisee/URP17-Glitch.git?path=Assets/URPGlitch",
+    "com.myrisee.urp-glitch": "https://github.com/myrisee/URP17-Glitch.git?path=Assets/URPGlitch",
   }
 }
 ```
